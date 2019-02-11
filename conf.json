@@ -1,5 +1,5 @@
 {
-    "conn": "host=localhost user=postgres port=5432 dbname=some_db",
+    "conn": "user=ksu password='pswd' port=5432 dbname='some_db' sslmode=disable",
     "output_dir": "./result",
     "tables": [
       {
