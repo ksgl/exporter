@@ -18,7 +18,7 @@ func main() {
 
 	db := database.Connect(*conf)
 	fill.Populate(db)
-	db.Export(*conf)
+	db.ExportCSV(*conf)
 
 	return
 }

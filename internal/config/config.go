@@ -21,7 +21,7 @@ type Table struct {
 }
 
 func Configure(filename string) *Configuration {
-	path := "../" + filename
+	path := "./" + filename
 	config := &Configuration{}
 
 	data, err := ioutil.ReadFile(path)
@@ -32,7 +32,7 @@ func Configure(filename string) *Configuration {
 
 	err = config.UnmarshalJSON(data)
 	if err != nil {
-		log.Println("Can't unmarshal data into configuration file.")
+		log.Println("Can't unmarshal data into configuration struct.")
 		os.Exit(1)
 	}
 

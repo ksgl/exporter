@@ -18,6 +18,7 @@
 
 Пример конфига (необязательно использовать точно такой формат и названия полей):
 
+```
 {
   "conn": "host=localhost user=postgres port=5432 dbname=some_db",
   "output_dir": "./result",
@@ -34,14 +35,17 @@
     }
   ]
 }
+```
 
 В результате работы программы должны быть созданы csv-файлы:
 
+```
 ./result/people/000.csv
 ./result/people/001.csv
 ./result/people/002.csv
 ./result/cities/000.csv
 ./result/cities/001.csv
+```
 
 В этом примере в каждом файлике people должно быть не более 101 строки (хэдер и 100 строк данных), аналогично для cities.
 
@@ -49,7 +53,7 @@
 
 
 Схема БД (можно добавить еще таблицы):
-
+```
 create table people (
   id serial not null primary key,
   name varchar(256) not null,
@@ -71,3 +75,4 @@ create table countries (
   name varchar(256) not null,
   created timestamp(0) not null default current_timestamp
 ) ;
+```
