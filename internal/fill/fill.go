@@ -48,8 +48,17 @@ func Populate(DB *database.DB) {
 	psInsertCities, _ := DB.Database.Preparex(insertCities)
 	psInsertCountries, _ := DB.Database.Preparex(insertCountries)
 
-	for i := 0; i < 5000; i++ {
-		psInsertPeople.Exec(fake.FirstName(), fake.LastName(), strconv.Itoa(rand.Intn(119)+1900)+"-"+strconv.Itoa(rand.Intn(11)+1)+"-"+strconv.Itoa(rand.Intn(30)+1), rand.Intn(50))
+	var date string
+
+	for i := 0; i < 500; i++ {
+		// february
+		if month := strconv.Itoa(rand.Intn(11) + 1); month == "2" {
+			date = strconv.Itoa(rand.Intn(119)+1900) + "-" + month + "-" + strconv.Itoa(rand.Intn(27)+1)
+		} else {
+			date = strconv.Itoa(rand.Intn(119)+1900) + "-" + month + "-" + strconv.Itoa(rand.Intn(30)+1)
+		}
+
+		psInsertPeople.Exec(fake.FirstName(), fake.LastName(), date, rand.Intn(50))
 		psInsertCities.Exec(fake.City(), rand.Int31n(400))
 		psInsertCountries.Exec(fake.Country())
 	}

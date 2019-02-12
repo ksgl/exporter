@@ -14,7 +14,7 @@ var (
 
 func main() {
 	flag.Parse()
-	conf := config.Configure(*confFile)
+	conf := config.ReadConfiguration(*confFile)
 
 	db := database.Connect(*conf)
 	fill.Populate(db)

@@ -5,12 +5,12 @@
       {
         "name": "people",
         "query": "select name, lastname, birthday from people",
-        "max_lines": 100
+        "max_lines": 400
       },
       {
         "name": "cities",
         "query": "select name, country_id from cities",
-        "max_lines": 1000
+        "max_lines": 5
       }
     ]
 }

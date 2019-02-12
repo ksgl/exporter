@@ -20,7 +20,7 @@ type Table struct {
 	MaxLines int    `json:"max_lines"`
 }
 
-func Configure(filename string) *Configuration {
+func ReadConfiguration(filename string) *Configuration {
 	path := "./" + filename
 	config := &Configuration{}
 
