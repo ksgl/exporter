@@ -6,6 +6,8 @@ import (
 	"log"
 	"os"
 	"path"
+	"strconv"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
@@ -50,18 +52,59 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 
 					rows, _ := q.stmt.Queryx()
 					columns, _ := rows.Columns()
-					columns = columns
 
 					nextFileName := make(chan string)
-					rowsToDump := make(chan []interface{}, 100)
+					rowsToDump := make(chan []interface{})
 					noMoreRows := make(chan bool)
 					doneDumping := make(chan bool)
 
 					go func(nfn chan string, rtd chan []interface{}, nmr chan bool, dD chan bool) {
+						var file *os.File
 						for true {
 							select {
 							case r := <-rtd:
-								log.Println(r)
+
+								if file == nil {
+									if f == "" {
+										log.Fatal("File doesn't exist.")
+									} else {
+										for idx, col := range columns {
+											if idx == len(columns)-1 {
+												file.WriteString(col)
+											} else {
+												file.WriteString(col + ",")
+											}
+										}
+										file.WriteString("\n")
+									}
+								}
+
+								for idx, el := range r {
+									switch el := el.(type) {
+									case string:
+										if idx == len(r)-1 {
+											file.WriteString(el)
+										} else {
+											file.WriteString(el + ",")
+										}
+									case int, int8, int32, int64:
+										if idx == len(r)-1 {
+											file.WriteString(strconv.FormatInt(el.(int64), 10))
+										} else {
+											file.WriteString(strconv.FormatInt(el.(int64), 10) + ",")
+										}
+									case time.Time:
+										if idx == len(r)-1 {
+											file.WriteString(strconv.FormatInt(el.Unix(), 10))
+										} else {
+											file.WriteString(strconv.FormatInt(el.Unix(), 10) + ",")
+										}
+									default:
+										log.Println("Unknown type.")
+									}
+
+								}
+								file.WriteString("\n")
 
 							case f := <-nfn:
 
@@ -69,10 +112,20 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 								if _, err := os.Stat(f); err != nil {
 									os.MkdirAll(path.Dir(f), 0777)
 								}
-								file, _ := os.Create(f)
+
+								if file != nil {
+									file.Sync()
+									file.Close()
+								}
+
+								file, _ = os.Create(f)
 								file.Chmod(0777)
 
 							case <-nmr:
+								if file != nil {
+									file.Sync()
+									file.Close()
+								}
 								break
 							}
 						}
@@ -119,45 +172,4 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 	for _, done := range dones {
 		<-done
 	}
-
-	// 	for idx, col := range columns {
-	// 		if idx == colSize-1 {
-	// 			file.WriteString(col)
-	// 		} else {
-	// 			file.WriteString(col + ",")
-	// 		}
-	// 	}
-	// 	file.WriteString("\n")
-
-	// 	for _, row := range data {
-	// for idx, el := range row {
-	// 	switch el := el.(type) {
-	// 	case string:
-	// 		if idx == rowSize-1 {
-	// 			file.WriteString(el)
-	// 		} else {
-	// 			file.WriteString(el + ",")
-	// 		}
-	// 	case int, int8, int32, int64:
-	// 		if idx == rowSize-1 {
-	// 			file.WriteString(strconv.FormatInt(el.(int64), 10))
-	// 		} else {
-	// 			file.WriteString(strconv.FormatInt(el.(int64), 10) + ",")
-	// 		}
-	// 	case time.Time:
-	// 		if idx == rowSize-1 {
-	// 			file.WriteString(strconv.FormatInt(el.Unix(), 10))
-	// 		} else {
-	// 			file.WriteString(strconv.FormatInt(el.Unix(), 10) + ",")
-	// 		}
-	// 	default:
-	// 		log.Println("Unknown type.")
-	// 	}
-	// }
-	// file.WriteString("\n")
-	// 	}
-
-	// 	file.Close()
-	// }
-	// }
 }
