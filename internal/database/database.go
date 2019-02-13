@@ -38,7 +38,7 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 	// }
 
 	queriesToExecute := make(chan *sqlx.Stmt)
-	noMoreWork := make(chan bool)
+	noMoreQueries := make(chan bool)
 	var dones []chan bool
 
 	for i := 0; i < threads; i++ {
@@ -51,11 +51,33 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 				case q := <-qs:
 
 					rows, _ := q.Queryx()
+					columns, _ := rows.Columns()
+					columns = columns
+
+					rowsToDump := make(chan []interface{}, 100)
+					noMoreRows := make(chan bool)
+					doneDumping := make(chan bool)
+
+					// spawn goroutine with columns, rowsToDump, noMoreWork, doneDumping
+
+					go func(rtd chan []interface{}, nmr chan bool, dD chan bool) {
+						for true {
+							select {
+							case r := <-rtd:
+
+							case <-nmr:
+								break
+							}
+						}
+						dD <- true
+					}(rowsToDump, noMoreRows, doneDumping)
 
 					for rows.Next() {
 						row, _ := rows.SliceScan()
-						log.Println(row)
+						rowsToDump <- row
 					}
+					noMoreRows <- true
+					<-doneDumping
 					rows.Close()
 
 				case <-nmw:
@@ -63,20 +85,18 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 				}
 			}
 			done <- true
-		}(queriesToExecute, noMoreWork, done)
+		}(queriesToExecute, noMoreQueries, done)
 	}
 
 	for _, tbl := range conf.Tables {
 		psQuery, _ := DB.Database.Preparex(tbl.Query)
 		queriesToExecute <- psQuery
 	}
-	noMoreWork <- true
+	noMoreQueries <- true
 
 	for _, done := range dones {
 		<-done
 	}
-	// // получаем из запроса колонки и имя таблицы (для хедера и названия файлов)
-	// columns, colSize, table := parseSelectQuery(tbl.Query)
 
 	// // для таблицы создаем папку, если её не существует
 	// tableOutputDirPath := outputDirPath + "/" + table
@@ -109,31 +129,31 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 	// 	file.WriteString("\n")
 
 	// 	for _, row := range data {
-	// 		for idx, el := range row {
-	// 			switch el := el.(type) {
-	// 			case string:
-	// 				if idx == rowSize-1 {
-	// 					file.WriteString(el)
-	// 				} else {
-	// 					file.WriteString(el + ",")
-	// 				}
-	// 			case int, int8, int32, int64:
-	// 				if idx == rowSize-1 {
-	// 					file.WriteString(strconv.FormatInt(el.(int64), 10))
-	// 				} else {
-	// 					file.WriteString(strconv.FormatInt(el.(int64), 10) + ",")
-	// 				}
-	// 			case time.Time:
-	// 				if idx == rowSize-1 {
-	// 					file.WriteString(strconv.FormatInt(el.Unix(), 10))
-	// 				} else {
-	// 					file.WriteString(strconv.FormatInt(el.Unix(), 10) + ",")
-	// 				}
-	// 			default:
-	// 				log.Println("Unknown type.")
-	// 			}
+	// for idx, el := range row {
+	// 	switch el := el.(type) {
+	// 	case string:
+	// 		if idx == rowSize-1 {
+	// 			file.WriteString(el)
+	// 		} else {
+	// 			file.WriteString(el + ",")
 	// 		}
-	// 		file.WriteString("\n")
+	// 	case int, int8, int32, int64:
+	// 		if idx == rowSize-1 {
+	// 			file.WriteString(strconv.FormatInt(el.(int64), 10))
+	// 		} else {
+	// 			file.WriteString(strconv.FormatInt(el.(int64), 10) + ",")
+	// 		}
+	// 	case time.Time:
+	// 		if idx == rowSize-1 {
+	// 			file.WriteString(strconv.FormatInt(el.Unix(), 10))
+	// 		} else {
+	// 			file.WriteString(strconv.FormatInt(el.Unix(), 10) + ",")
+	// 		}
+	// 	default:
+	// 		log.Println("Unknown type.")
+	// 	}
+	// }
+	// file.WriteString("\n")
 	// 	}
 
 	// 	file.Close()
@@ -153,17 +173,4 @@ func parseSelectQuery(query string) (columns []string, colSize int) {
 	}
 
 	return columns, len(columns)
-}
-
-// функция выполняет селект (не зависит от количества запрашиваемых колонок, универсальна)
-func (DB *DB) execSelectQuery(query string) (data [][]interface{}, dataSize, rowSize int) {
-	rows, _ := DB.Database.Queryx(query)
-
-	for rows.Next() {
-		row, _ := rows.SliceScan()
-		data = append(data, row)
-	}
-	rows.Close()
-
-	return data, len(data), len(data[0])
 }
