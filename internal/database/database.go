@@ -48,63 +48,7 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 		done := make(chan bool)
 		dones = append(dones, done)
 
-		go func() {
-			for true {
-				select {
-				case q := <-queriesToExecute:
-					rows, err := q.stmt.Queryx()
-
-					if err != nil {
-						panic(err)
-					}
-
-					nextFile := make(chan fileInfo)
-					rowsToDump := make(chan []interface{})
-					noMoreRows := make(chan bool)
-					doneDumping := make(chan bool)
-
-					go writeCSV(nextFile, rowsToDump, noMoreRows, doneDumping)
-
-					fileI := 0
-					for results := true; results; results = rows.NextResultSet() {
-						rowI := 0
-						for rows.Next() {
-							if rowI >= q.maxLines {
-								rowI = 0
-							}
-
-							if rowI == 0 {
-								columns, err := rows.Columns()
-
-								if err != nil {
-									panic(err)
-								}
-
-								fileName := fmt.Sprintf("%s/%s/%03d.csv", q.outputDirPath, q.tableName, fileI)
-								nextFile <- fileInfo{fileName: fileName, columns: columns}
-								fileI++
-							}
-
-							row, err := rows.SliceScan()
-
-							if err != nil {
-								panic(err)
-							}
-
-							rowsToDump <- row
-							rowI++
-						}
-					}
-					noMoreRows <- true
-					<-doneDumping
-					rows.Close()
-
-				case <-noMoreQueries:
-					break
-				}
-			}
-			done <- true
-		}()
+		go executeAsyncSelect(queriesToExecute, noMoreQueries, done)
 	}
 
 	for _, tbl := range conf.Tables {
@@ -116,7 +60,10 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 
 		queriesToExecute <- queryParams{stmt: psQuery, maxLines: tbl.MaxLines, tableName: tbl.Name, outputDirPath: conf.OutputDir}
 	}
-	noMoreQueries <- true
+
+	for range dones {
+		noMoreQueries <- true
+	}
 
 	for _, done := range dones {
 		<-done
@@ -152,21 +99,21 @@ func writeCSV(nextFile chan fileInfo, rowsToDump chan []interface{}, noMoreRows 
 					file.Chmod(0777)
 
 					for idx, col := range currentFile.columns {
-						if idx == len(currentFile.columns)-1 {
-							_, err := file.WriteString(col)
+
+						if idx > 0 {
+							_, err := file.WriteString(",")
 
 							if err != nil {
 								panic(err)
 							}
-
-						} else {
-							_, err := file.WriteString(col + ",")
-
-							if err != nil {
-								panic(err)
-							}
-
 						}
+
+						_, err := file.WriteString(col)
+
+						if err != nil {
+							panic(err)
+						}
+
 					}
 					_, err = file.WriteString("\n")
 
@@ -178,60 +125,46 @@ func writeCSV(nextFile chan fileInfo, rowsToDump chan []interface{}, noMoreRows 
 			}
 
 			for idx, el := range r {
+
+				if idx > 0 {
+					_, err := file.WriteString(",")
+
+					if err != nil {
+						panic(err)
+					}
+				}
+
 				switch el := el.(type) {
 				case string:
-					if idx == len(r)-1 {
-						_, err := file.WriteString(el)
 
-						if err != nil {
-							panic(err)
-						}
+					_, err := file.WriteString(el)
 
-					} else {
-						_, err := file.WriteString(el + ",")
-
-						if err != nil {
-							panic(err)
-						}
-
+					if err != nil {
+						panic(err)
 					}
+
 				case int, int8, int32, int64:
-					if idx == len(r)-1 {
-						_, err := file.WriteString(strconv.FormatInt(el.(int64), 10))
 
-						if err != nil {
-							panic(err)
-						}
+					_, err := file.WriteString(strconv.FormatInt(el.(int64), 10))
 
-					} else {
-						_, err := file.WriteString(strconv.FormatInt(el.(int64), 10) + ",")
-
-						if err != nil {
-							panic(err)
-						}
-
+					if err != nil {
+						panic(err)
 					}
+
 				case time.Time:
-					if idx == len(r)-1 {
-						_, err := file.WriteString(strconv.FormatInt(el.Unix(), 10))
 
-						if err != nil {
-							panic(err)
-						}
+					_, err := file.WriteString(strconv.FormatInt(el.Unix(), 10))
 
-					} else {
-						_, err := file.WriteString(strconv.FormatInt(el.Unix(), 10) + ",")
-
-						if err != nil {
-							panic(err)
-						}
-
+					if err != nil {
+						panic(err)
 					}
+
 				default:
 					panic("Unknown column data type.")
 				}
 
 			}
+
 			_, err := file.WriteString("\n")
 
 			if err != nil {
@@ -280,4 +213,62 @@ func writeCSV(nextFile chan fileInfo, rowsToDump chan []interface{}, noMoreRows 
 		}
 	}
 	doneDumping <- true
+}
+
+func executeAsyncSelect(queriesToExecute chan queryParams, noMoreQueries chan bool, done chan bool) {
+	for true {
+		select {
+		case q := <-queriesToExecute:
+			rows, err := q.stmt.Queryx()
+
+			if err != nil {
+				panic(err)
+			}
+
+			nextFile := make(chan fileInfo)
+			rowsToDump := make(chan []interface{})
+			noMoreRows := make(chan bool)
+			doneDumping := make(chan bool)
+
+			go writeCSV(nextFile, rowsToDump, noMoreRows, doneDumping)
+
+			fileI := 0
+			for results := true; results; results = rows.NextResultSet() {
+				rowI := 0
+				for rows.Next() {
+					if rowI >= q.maxLines {
+						rowI = 0
+					}
+
+					if rowI == 0 {
+						columns, err := rows.Columns()
+
+						if err != nil {
+							panic(err)
+						}
+
+						fileName := fmt.Sprintf("%s/%s/%03d.csv", q.outputDirPath, q.tableName, fileI)
+						nextFile <- fileInfo{fileName: fileName, columns: columns}
+						fileI++
+					}
+
+					row, err := rows.SliceScan()
+
+					if err != nil {
+						panic(err)
+					}
+
+					rowsToDump <- row
+					rowI++
+				}
+			}
+			noMoreRows <- true
+			<-doneDumping
+			rows.Close()
+
+		case <-noMoreQueries:
+			break
+		}
+	}
+	done <- true
 }
