@@ -24,6 +24,11 @@ type queryParams struct {
 	outputDirPath string
 }
 
+type fileInfo struct {
+	fileName string
+	columns  []string
+}
+
 func Connect(conf config.Configuration) *DB {
 	db, err := sqlx.Connect("postgres", conf.Connector)
 	if err != nil {
@@ -44,30 +49,38 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 		done := make(chan bool)
 		dones = append(dones, done)
 
-		go func(qs chan queryParams, nmw chan bool, dn chan bool) {
+		go func() {
 			for true {
 				select {
-				case q := <-qs:
+				case q := <-queriesToExecute:
 					log.Println("qwery obtained")
 
 					rows, _ := q.stmt.Queryx()
-					columns, _ := rows.Columns()
 
-					nextFileName := make(chan string)
+					nextFile := make(chan fileInfo)
 					rowsToDump := make(chan []interface{})
 					noMoreRows := make(chan bool)
 					doneDumping := make(chan bool)
 
-					go func(nfn chan string, rtd chan []interface{}, nmr chan bool, dD chan bool) {
+					go func() {
+						fileName := ""
+						var columns []string
 						var file *os.File
 						for true {
 							select {
-							case r := <-rtd:
+							case r := <-rowsToDump:
 
 								if file == nil {
-									if f == "" {
+									if fileName == "" {
 										log.Fatal("File doesn't exist.")
 									} else {
+										if _, err := os.Stat(fileName); err != nil {
+											os.MkdirAll(path.Dir(fileName), 0777)
+										}
+
+										file, _ = os.Create(fileName)
+										file.Chmod(0777)
+
 										for idx, col := range columns {
 											if idx == len(columns)-1 {
 												file.WriteString(col)
@@ -106,31 +119,30 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 								}
 								file.WriteString("\n")
 
-							case f := <-nfn:
-
-								log.Println(f)
-								if _, err := os.Stat(f); err != nil {
-									os.MkdirAll(path.Dir(f), 0777)
-								}
+							case f := <-nextFile:
 
 								if file != nil {
 									file.Sync()
 									file.Close()
+									file = nil
 								}
 
-								file, _ = os.Create(f)
-								file.Chmod(0777)
+								fileName = f.fileName
+								columns = f.columns
 
-							case <-nmr:
+							case <-noMoreRows:
+
 								if file != nil {
 									file.Sync()
 									file.Close()
+									file = nil
 								}
+
 								break
 							}
 						}
-						dD <- true
-					}(nextFileName, rowsToDump, noMoreRows, doneDumping)
+						doneDumping <- true
+					}()
 
 					fileI := 0
 					for results := true; results; results = rows.NextResultSet() {
@@ -141,8 +153,10 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 							}
 
 							if rowI == 0 {
+								columns, _ := rows.Columns()
+
 								fileName := fmt.Sprintf("%s/%s/%03d.csv", q.outputDirPath, q.tableName, fileI)
-								nextFileName <- fileName
+								nextFile <- fileInfo{fileName: fileName, columns: columns}
 								fileI++
 							}
 
@@ -155,12 +169,12 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 					<-doneDumping
 					rows.Close()
 
-				case <-nmw:
+				case <-noMoreQueries:
 					break
 				}
 			}
 			done <- true
-		}(queriesToExecute, noMoreQueries, done)
+		}()
 	}
 
 	for _, tbl := range conf.Tables {
