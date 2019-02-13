@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path"
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
-
-	"github.com/xwb1989/sqlparser"
 )
 
 type DB struct {
@@ -35,12 +34,6 @@ func Connect(conf config.Configuration) *DB {
 
 // ExportCSV exports csv
 func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
-	// создаем папку results, если её не существует
-	outputDirPath := conf.OutputDir
-	if _, err := os.Stat(outputDirPath); err != nil {
-		os.Mkdir(outputDirPath, 0777)
-	}
-
 	queriesToExecute := make(chan queryParams)
 	noMoreQueries := make(chan bool)
 	var dones []chan bool
@@ -68,6 +61,15 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 							select {
 							case r := <-rtd:
 								log.Println(r)
+
+							case f := <-nfn:
+
+								if _, err := os.Stat(f); err != nil {
+									os.MkdirAll(path.Dir(f), 0777)
+								}
+								file, _ := os.Create(f)
+								file.Chmod(0777)
+
 							case <-nmr:
 								break
 							}
@@ -78,20 +80,18 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 					fileI := 0
 					for results := true; results; results = rows.NextResultSet() {
 						rowI := 0
-
 						for rows.Next() {
 							if rowI >= q.maxLines {
 								rowI = 0
 							}
 
-							row, _ := rows.SliceScan()
-
 							if rowI == 0 {
-								temp := fmt.Sprintf("%s/%s/%03d", outputDirPath, q.tableName, fileI)
-								nextFileName <- temp
+								fileName := fmt.Sprintf("%s/%s/%03d.csv", q.outputDirPath, q.tableName, fileI)
+								nextFileName <- fileName
 								fileI++
 							}
 
+							row, _ := rows.SliceScan()
 							rowsToDump <- row
 							rowI++
 						}
@@ -110,34 +110,13 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 
 	for _, tbl := range conf.Tables {
 		psQuery, _ := DB.Database.Preparex(tbl.Query)
-		queriesToExecute <- queryParams{stmt: psQuery, maxLines: tbl.MaxLines, tableName: tbl.Name, outputDirPath: conf.OutputDir + "/" + tbl.Name}
+		queriesToExecute <- queryParams{stmt: psQuery, maxLines: tbl.MaxLines, tableName: tbl.Name, outputDirPath: conf.OutputDir}
 	}
 	noMoreQueries <- true
 
 	for _, done := range dones {
 		<-done
 	}
-
-	// // для таблицы создаем папку, если её не существует
-	// tableOutputDirPath := outputDirPath + "/" + table
-	// if _, err := os.Stat(tableOutputDirPath); err != nil {
-	// 	os.Mkdir(tableOutputDirPath, 0777)
-	// }
-
-	// // получаем данные селекта и размер данных
-	// data, dataSize, rowSize := DB.execSelectQuery(tbl.Query)
-
-	// // определяем количество файлов
-	// filesCount := 1
-	// if tbl.MaxLines < dataSize {
-	// 	filesCount = int(math.Ceil(float64(dataSize) / float64(tbl.MaxLines)))
-	// }
-
-	// // создаём файлы и записываем в них данные
-	// for i := 0; i < filesCount; i++ {
-	// 	fileName := fmt.Sprintf("%s/%03d.csv", tableOutputDirPath, i+1)
-	// 	file, _ := os.Create(fileName)
-	// 	file.Chmod(0777)
 
 	// 	for idx, col := range columns {
 	// 		if idx == colSize-1 {
@@ -179,18 +158,4 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 	// 	file.Close()
 	// }
 	// }
-}
-
-// функция возвращает запрашиваемые селектом колонки
-func parseSelectQuery(query string) (columns []string, colSize int) {
-	stmt, _ := sqlparser.Parse(query)
-
-	switch stmt := stmt.(type) {
-	case *sqlparser.Select:
-		for _, col := range stmt.SelectExprs {
-			columns = append(columns, sqlparser.String(col))
-		}
-	}
-
-	return columns, len(columns)
 }

@@ -5,7 +5,7 @@
       {
         "name": "people",
         "query": "select name, lastname, birthday from people",
-        "max_lines": 400
+        "max_lines": 2
       },
       {
         "name": "cities",
