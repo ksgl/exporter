@@ -18,7 +18,7 @@ func main() {
 
 	db := database.Connect(*conf)
 	fill.Populate(db)
-	db.ExportCSV(*conf)
+	db.ExportCSV(*conf, *threads)
 
 	return
 }
