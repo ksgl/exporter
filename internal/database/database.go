@@ -30,7 +30,6 @@ type fileInfo struct {
 
 func Connect(conf config.Configuration) *DB {
 	db, err := sqlx.Connect("postgres", conf.Connector)
-
 	if err != nil {
 		panic(err)
 	}
@@ -48,12 +47,11 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 		done := make(chan bool)
 		dones = append(dones, done)
 
-		go executeAsyncSelect(queriesToExecute, noMoreQueries, done)
+		go processResults(queriesToExecute, noMoreQueries, done)
 	}
 
 	for _, tbl := range conf.Tables {
 		psQuery, err := DB.Database.Preparex(tbl.Query)
-
 		if err != nil {
 			panic(err)
 		}
@@ -73,62 +71,56 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 func writeCSV(nextFile chan fileInfo, rowsToDump chan []interface{}, noMoreRows chan bool, doneDumping chan bool) {
 	var currentFile fileInfo
 	var file *os.File
+
 	for true {
 		select {
+
 		case r := <-rowsToDump:
 
 			if file == nil {
 				if currentFile.fileName == "" {
 					panic("Received data before the file name.")
-				} else {
-					if _, err := os.Stat(currentFile.fileName); err != nil {
-						err := os.MkdirAll(path.Dir(currentFile.fileName), 0777)
-
-						if err != nil {
-							panic(err)
-						}
-
-					}
-
-					file, err := os.Create(currentFile.fileName)
-
-					if err != nil {
-						panic(err)
-					}
-
-					file.Chmod(0777)
-
-					for idx, col := range currentFile.columns {
-
-						if idx > 0 {
-							_, err := file.WriteString(",")
-
-							if err != nil {
-								panic(err)
-							}
-						}
-
-						_, err := file.WriteString(col)
-
-						if err != nil {
-							panic(err)
-						}
-
-					}
-					_, err = file.WriteString("\n")
-
-					if err != nil {
-						panic(err)
-					}
-
 				}
+
+				err := os.MkdirAll(path.Dir(currentFile.fileName), 0777)
+				if err != nil {
+					panic(err)
+				}
+
+				file, err = os.Create(currentFile.fileName)
+				if err != nil {
+					panic(err)
+				}
+
+				err = file.Chmod(0777)
+				if err != nil {
+					panic(err)
+				}
+
+				for idx, col := range currentFile.columns {
+					if idx > 0 {
+						_, err = file.WriteString(",")
+						if err != nil {
+							panic(err)
+						}
+					}
+
+					_, err = file.WriteString(col)
+					if err != nil {
+						panic(err)
+					}
+				}
+
+				_, err = file.WriteString("\n")
+				if err != nil {
+					panic(err)
+				}
+
 			}
 
 			for idx, el := range r {
-
 				if idx > 0 {
 					_, err := file.WriteString(",")
-
 					if err != nil {
 						panic(err)
 					}
@@ -138,7 +130,6 @@ func writeCSV(nextFile chan fileInfo, rowsToDump chan []interface{}, noMoreRows 
 				case string:
 
 					_, err := file.WriteString(el)
-
 					if err != nil {
 						panic(err)
 					}
@@ -146,7 +137,6 @@ func writeCSV(nextFile chan fileInfo, rowsToDump chan []interface{}, noMoreRows 
 				case int, int8, int32, int64:
 
 					_, err := file.WriteString(strconv.FormatInt(el.(int64), 10))
-
 					if err != nil {
 						panic(err)
 					}
@@ -154,19 +144,18 @@ func writeCSV(nextFile chan fileInfo, rowsToDump chan []interface{}, noMoreRows 
 				case time.Time:
 
 					_, err := file.WriteString(strconv.FormatInt(el.Unix(), 10))
-
 					if err != nil {
 						panic(err)
 					}
 
 				default:
-					panic("Unknown column data type.")
-				}
 
+					panic("Unknown column data type.")
+
+				}
 			}
 
 			_, err := file.WriteString("\n")
-
 			if err != nil {
 				panic(err)
 			}
@@ -175,13 +164,11 @@ func writeCSV(nextFile chan fileInfo, rowsToDump chan []interface{}, noMoreRows 
 
 			if file != nil {
 				err := file.Sync()
-
 				if err != nil {
 					panic(err)
 				}
 
 				err = file.Close()
-
 				if err != nil {
 					panic(err)
 				}
@@ -195,13 +182,11 @@ func writeCSV(nextFile chan fileInfo, rowsToDump chan []interface{}, noMoreRows 
 
 			if file != nil {
 				err := file.Sync()
-
 				if err != nil {
 					panic(err)
 				}
 
 				err = file.Close()
-
 				if err != nil {
 					panic(err)
 				}
@@ -210,17 +195,20 @@ func writeCSV(nextFile chan fileInfo, rowsToDump chan []interface{}, noMoreRows 
 			}
 
 			break
+
 		}
 	}
+
 	doneDumping <- true
 }
 
-func executeAsyncSelect(queriesToExecute chan queryParams, noMoreQueries chan bool, done chan bool) {
+func processResults(queriesToExecute chan queryParams, noMoreQueries chan bool, done chan bool) {
 	for true {
 		select {
-		case q := <-queriesToExecute:
-			rows, err := q.stmt.Queryx()
 
+		case q := <-queriesToExecute:
+
+			rows, err := q.stmt.Queryx()
 			if err != nil {
 				panic(err)
 			}
@@ -242,7 +230,6 @@ func executeAsyncSelect(queriesToExecute chan queryParams, noMoreQueries chan bo
 
 					if rowI == 0 {
 						columns, err := rows.Columns()
-
 						if err != nil {
 							panic(err)
 						}
@@ -253,7 +240,6 @@ func executeAsyncSelect(queriesToExecute chan queryParams, noMoreQueries chan bo
 					}
 
 					row, err := rows.SliceScan()
-
 					if err != nil {
 						panic(err)
 					}
@@ -262,13 +248,17 @@ func executeAsyncSelect(queriesToExecute chan queryParams, noMoreQueries chan bo
 					rowI++
 				}
 			}
+
 			noMoreRows <- true
 			<-doneDumping
 			rows.Close()
 
 		case <-noMoreQueries:
+
 			break
+
 		}
 	}
+
 	done <- true
 }
