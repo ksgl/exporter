@@ -46,6 +46,7 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 			for true {
 				select {
 				case q := <-qs:
+					log.Println("qwery obtained")
 
 					rows, _ := q.stmt.Queryx()
 					columns, _ := rows.Columns()
@@ -64,6 +65,7 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 
 							case f := <-nfn:
 
+								log.Println(f)
 								if _, err := os.Stat(f); err != nil {
 									os.MkdirAll(path.Dir(f), 0777)
 								}
@@ -111,6 +113,7 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 	for _, tbl := range conf.Tables {
 		psQuery, _ := DB.Database.Preparex(tbl.Query)
 		queriesToExecute <- queryParams{stmt: psQuery, maxLines: tbl.MaxLines, tableName: tbl.Name, outputDirPath: conf.OutputDir}
+		log.Println("!!!!!!!!!!!!!!!")
 	}
 	noMoreQueries <- true
 
