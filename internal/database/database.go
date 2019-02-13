@@ -32,8 +32,7 @@ type fileInfo struct {
 func Connect(conf config.Configuration) *DB {
 	db, err := sqlx.Connect("postgres", conf.Connector)
 	if err != nil {
-		log.Println("Can't connect to Postgres.")
-		os.Exit(1)
+		log.Fatal("Can't connect to Postgres.")
 	}
 
 	return &DB{db}
@@ -53,9 +52,11 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 			for true {
 				select {
 				case q := <-queriesToExecute:
-					log.Println("qwery obtained")
+					rows, err := q.stmt.Queryx()
 
-					rows, _ := q.stmt.Queryx()
+					if err != nil {
+						log.Fatal(err)
+					}
 
 					nextFile := make(chan fileInfo)
 					rowsToDump := make(chan []interface{})
@@ -63,32 +64,56 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 					doneDumping := make(chan bool)
 
 					go func() {
-						fileName := ""
-						var columns []string
+						var currentFile fileInfo
 						var file *os.File
 						for true {
 							select {
 							case r := <-rowsToDump:
 
 								if file == nil {
-									if fileName == "" {
-										log.Fatal("File doesn't exist.")
+									if currentFile.fileName == "" {
+										log.Fatal("Received data before the file name.")
 									} else {
-										if _, err := os.Stat(fileName); err != nil {
-											os.MkdirAll(path.Dir(fileName), 0777)
+										if _, err := os.Stat(currentFile.fileName); err != nil {
+											err := os.MkdirAll(path.Dir(currentFile.fileName), 0777)
+
+											if err != nil {
+												log.Fatal(err)
+											}
+
 										}
 
-										file, _ = os.Create(fileName)
+										file, err = os.Create(currentFile.fileName)
+
+										if err != nil {
+											log.Fatal(err)
+										}
+
 										file.Chmod(0777)
 
-										for idx, col := range columns {
-											if idx == len(columns)-1 {
-												file.WriteString(col)
+										for idx, col := range currentFile.columns {
+											if idx == len(currentFile.columns)-1 {
+												_, err := file.WriteString(col)
+
+												if err != nil {
+													log.Fatal(err)
+												}
+
 											} else {
-												file.WriteString(col + ",")
+												_, err := file.WriteString(col + ",")
+
+												if err != nil {
+													log.Fatal(err)
+												}
+
 											}
 										}
-										file.WriteString("\n")
+										_, err := file.WriteString("\n")
+
+										if err != nil {
+											log.Fatal(err)
+										}
+
 									}
 								}
 
@@ -96,45 +121,97 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 									switch el := el.(type) {
 									case string:
 										if idx == len(r)-1 {
-											file.WriteString(el)
+											_, err := file.WriteString(el)
+
+											if err != nil {
+												log.Fatal(err)
+											}
+
 										} else {
-											file.WriteString(el + ",")
+											_, err := file.WriteString(el + ",")
+
+											if err != nil {
+												log.Fatal(err)
+											}
+
 										}
 									case int, int8, int32, int64:
 										if idx == len(r)-1 {
-											file.WriteString(strconv.FormatInt(el.(int64), 10))
+											_, err := file.WriteString(strconv.FormatInt(el.(int64), 10))
+
+											if err != nil {
+												log.Fatal(err)
+											}
+
 										} else {
-											file.WriteString(strconv.FormatInt(el.(int64), 10) + ",")
+											_, err := file.WriteString(strconv.FormatInt(el.(int64), 10) + ",")
+
+											if err != nil {
+												log.Fatal(err)
+											}
+
 										}
 									case time.Time:
 										if idx == len(r)-1 {
-											file.WriteString(strconv.FormatInt(el.Unix(), 10))
+											_, err := file.WriteString(strconv.FormatInt(el.Unix(), 10))
+
+											if err != nil {
+												log.Fatal(err)
+											}
+
 										} else {
-											file.WriteString(strconv.FormatInt(el.Unix(), 10) + ",")
+											_, err := file.WriteString(strconv.FormatInt(el.Unix(), 10) + ",")
+
+											if err != nil {
+												log.Fatal(err)
+											}
+
 										}
 									default:
-										log.Println("Unknown type.")
+										log.Fatal("Unknown column data type.")
 									}
 
 								}
-								file.WriteString("\n")
+								_, err := file.WriteString("\n")
+
+								if err != nil {
+									log.Fatal(err)
+								}
 
 							case f := <-nextFile:
 
 								if file != nil {
-									file.Sync()
-									file.Close()
+									err := file.Sync()
+
+									if err != nil {
+										log.Fatal(err)
+									}
+
+									err = file.Close()
+
+									if err != nil {
+										log.Fatal(err)
+									}
+
 									file = nil
 								}
 
-								fileName = f.fileName
-								columns = f.columns
+								currentFile = f
 
 							case <-noMoreRows:
 
 								if file != nil {
-									file.Sync()
-									file.Close()
+									err := file.Sync()
+
+									if err != nil {
+										log.Fatal(err)
+									}
+
+									err = file.Close()
+
+									if err != nil {
+										log.Fatal(err)
+									}
 									file = nil
 								}
 
@@ -153,14 +230,23 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 							}
 
 							if rowI == 0 {
-								columns, _ := rows.Columns()
+								columns, err := rows.Columns()
+
+								if err != nil {
+									log.Fatal(err)
+								}
 
 								fileName := fmt.Sprintf("%s/%s/%03d.csv", q.outputDirPath, q.tableName, fileI)
 								nextFile <- fileInfo{fileName: fileName, columns: columns}
 								fileI++
 							}
 
-							row, _ := rows.SliceScan()
+							row, err := rows.SliceScan()
+
+							if err != nil {
+								log.Fatal(err)
+							}
+
 							rowsToDump <- row
 							rowI++
 						}
@@ -178,7 +264,12 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 	}
 
 	for _, tbl := range conf.Tables {
-		psQuery, _ := DB.Database.Preparex(tbl.Query)
+		psQuery, err := DB.Database.Preparex(tbl.Query)
+
+		if err != nil {
+			log.Fatal(err)
+		}
+
 		queriesToExecute <- queryParams{stmt: psQuery, maxLines: tbl.MaxLines, tableName: tbl.Name, outputDirPath: conf.OutputDir}
 	}
 	noMoreQueries <- true
