@@ -15,6 +15,11 @@ type DB struct {
 	Database *sqlx.DB
 }
 
+type StmtMaxLines struct {
+	stmt *sqlx.Stmt
+	maxLines int
+}
+
 func Connect(conf config.Configuration) *DB {
 	db, err := sqlx.Connect("postgres", conf.Connector)
 	if err != nil {
@@ -32,12 +37,8 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 	if _, err := os.Stat(outputDirPath); err != nil {
 		os.Mkdir(outputDirPath, 0777)
 	}
-	// } else {
-	// 	log.Panicln("Output dir already exists.")
-	// 	os.Exit(1)
-	// }
 
-	queriesToExecute := make(chan *sqlx.Stmt)
+	queriesToExecute := make(chan StmtMaxLines)
 	noMoreQueries := make(chan bool)
 	var dones []chan bool
 
@@ -45,52 +46,61 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 		done := make(chan bool)
 		dones = append(dones, done)
 
-		go func(qs chan *sqlx.Stmt, nmw chan bool, dn chan bool) {
-			for true {
-				select {
-				case q := <-qs:
+		go func(qs chan StmtMaxLines, nmw chan bool, dn chan bool) {
+		  for true {
+			select {
+			case q := <-qs:
 
-					rows, _ := q.Queryx()
-					columns, _ := rows.Columns()
-					columns = columns
+			  rows, _ := q.Queryx()
+			  columns, _ := rows.Columns()
+			  columns = columns
 
-					rowsToDump := make(chan []interface{}, 100)
-					noMoreRows := make(chan bool)
-					doneDumping := make(chan bool)
+			  nextFileName := make(chan string)
+			  rowsToDump := make(chan []interface{}, 100)
+			  noMoreRows := make(chan bool)
+			  doneDumping := make(chan bool)
 
-					// spawn goroutine with columns, rowsToDump, noMoreWork, doneDumping
-
-					go func(rtd chan []interface{}, nmr chan bool, dD chan bool) {
-						for true {
-							select {
-							case r := <-rtd:
-
-							case <-nmr:
-								break
-							}
-						}
-						dD <- true
-					}(rowsToDump, noMoreRows, doneDumping)
-
-					for rows.Next() {
-						row, _ := rows.SliceScan()
-						rowsToDump <- row
-					}
-					noMoreRows <- true
-					<-doneDumping
-					rows.Close()
-
-				case <-nmw:
+			  go func(nfn chan string, rtd chan []interface{}, nmr chan bool, dD chan bool) {
+				for true {
+				  select {
+				  case r := <-rtd:
+				  case <-nmr:
 					break
+				  }
 				}
+				dD <- true
+			  }(nextFileName, rowsToDump, noMoreRows, doneDumping)
+
+			  for results := true; results; results = rows.NextResultSet(){
+				nextFileName <- /// file name + .000
+			for rows.Next() {
+				row, _ := rows.SliceScan()
+				j := j + 1
+				if j >= tbl {
+				nextFileName <- /// file name + .001
+				j= 0
+				}
+		
+	
+	
+			rowsToDump <- row
+		  }
+		  }
+			  noMoreRows <- true
+			  <-doneDumping
+			  rows.Close()
+	
+			case <-nmw:
+			  break
 			}
-			done <- true
+		  }
+		  done <- true
 		}(queriesToExecute, noMoreQueries, done)
-	}
+	  }
 
 	for _, tbl := range conf.Tables {
 		psQuery, _ := DB.Database.Preparex(tbl.Query)
-		queriesToExecute <- psQuery
+		queriesToExecute <- StmtMaxLines{ stmt: psQuery, maxLines : tbl.MaxLines }
 	}
 	noMoreQueries <- true
 
