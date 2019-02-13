@@ -127,6 +127,7 @@ func (DB *DB) execSelectQuery(query string) (data [][]interface{}, dataSize, row
 		row, _ := rows.SliceScan()
 		data = append(data, row)
 	}
+	rows.Close()
 
 	return data, len(data), len(data[0])
 }
