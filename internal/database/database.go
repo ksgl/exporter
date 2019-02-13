@@ -113,7 +113,6 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 	for _, tbl := range conf.Tables {
 		psQuery, _ := DB.Database.Preparex(tbl.Query)
 		queriesToExecute <- queryParams{stmt: psQuery, maxLines: tbl.MaxLines, tableName: tbl.Name, outputDirPath: conf.OutputDir}
-		log.Println("!!!!!!!!!!!!!!!")
 	}
 	noMoreQueries <- true
 
