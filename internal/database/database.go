@@ -17,7 +17,7 @@ type DB struct {
 }
 
 type queryParams struct {
-	stmt          *sqlx.Stmt
+	stmt          string
 	maxLines      int
 	tableName     string
 	outputDirPath string
@@ -47,16 +47,11 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 		done := make(chan bool)
 		dones = append(dones, done)
 
-		go processResults(queriesToExecute, noMoreQueries, done)
+		go DB.executeQueries(queriesToExecute, noMoreQueries, done)
 	}
 
 	for _, tbl := range conf.Tables {
-		psQuery, err := DB.Database.Preparex(tbl.Query)
-		if err != nil {
-			panic(err)
-		}
-
-		queriesToExecute <- queryParams{stmt: psQuery, maxLines: tbl.MaxLines, tableName: tbl.Name, outputDirPath: conf.OutputDir}
+		queriesToExecute <- queryParams{stmt: tbl.Query, maxLines: tbl.MaxLines, tableName: tbl.Name, outputDirPath: conf.OutputDir}
 	}
 
 	for range dones {
@@ -72,9 +67,9 @@ func writeCSV(nextFile chan fileInfo, rowsToDump chan []interface{}, noMoreRows 
 	var currentFile fileInfo
 	var file *os.File
 
+loop:
 	for true {
 		select {
-
 		case r := <-rowsToDump:
 
 			if file == nil {
@@ -115,7 +110,6 @@ func writeCSV(nextFile chan fileInfo, rowsToDump chan []interface{}, noMoreRows 
 				if err != nil {
 					panic(err)
 				}
-
 			}
 
 			for idx, el := range r {
@@ -194,7 +188,7 @@ func writeCSV(nextFile chan fileInfo, rowsToDump chan []interface{}, noMoreRows 
 				file = nil
 			}
 
-			break
+			break loop
 
 		}
 	}
@@ -202,13 +196,13 @@ func writeCSV(nextFile chan fileInfo, rowsToDump chan []interface{}, noMoreRows 
 	doneDumping <- true
 }
 
-func processResults(queriesToExecute chan queryParams, noMoreQueries chan bool, done chan bool) {
+func (DB *DB) executeQueries(queriesToExecute chan queryParams, noMoreQueries chan bool, done chan bool) {
+loop:
 	for true {
 		select {
-
 		case q := <-queriesToExecute:
 
-			rows, err := q.stmt.Queryx()
+			rows, err := DB.Database.Queryx(q.stmt)
 			if err != nil {
 				panic(err)
 			}
@@ -255,7 +249,7 @@ func processResults(queriesToExecute chan queryParams, noMoreQueries chan bool, 
 
 		case <-noMoreQueries:
 
-			break
+			break loop
 
 		}
 	}
