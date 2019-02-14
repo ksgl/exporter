@@ -5,6 +5,7 @@ import (
 	"exporter/internal/database"
 	"exporter/internal/fill"
 	"flag"
+	"os"
 )
 
 var (
@@ -15,6 +16,10 @@ var (
 func main() {
 	flag.Parse()
 	conf := config.ReadConfiguration(*confFile)
+
+	if _, err := os.Stat(conf.OutputDir); err == nil {
+		os.RemoveAll(conf.OutputDir)
+	}
 
 	db := database.Connect(*conf)
 	fill.Populate(db)
