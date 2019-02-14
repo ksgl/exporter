@@ -16,6 +16,8 @@ go build cmd/main.go
 ./main -threads=8 -config=custom_conf.json
 ```
 
+В ``<dev-dir>/exporter/internal/fill/fill.go`` можно менять схему таблиц, количество данных.
+
 # Задание
 
 Написать экспортер данных из postgres в csv. В каждом csv-файле должен быть хэдер, содержащий названия колонок в postgres. Все поля формата timestamp должны быть преобразованы в unixtime (целое число). Решение выложить на гитхаб.
