@@ -3,6 +3,7 @@ package database
 import (
 	"exporter/internal/config"
 	"fmt"
+	"log"
 	"os"
 	"path"
 	"strconv"
@@ -31,7 +32,7 @@ type fileInfo struct {
 func Connect(conf config.Configuration) *DB {
 	db, err := sqlx.Connect("postgres", conf.Connector)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	return &DB{db}
@@ -51,7 +52,11 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 	}
 
 	for _, tbl := range conf.Tables {
-		queriesToExecute <- queryParams{stmt: tbl.Query, maxLines: tbl.MaxLines, tableName: tbl.Name, outputDirPath: conf.OutputDir}
+		queriesToExecute <- queryParams{
+			stmt:          tbl.Query,
+			maxLines:      tbl.MaxLines,
+			tableName:     tbl.Name,
+			outputDirPath: conf.OutputDir}
 	}
 
 	for range dones {
@@ -74,41 +79,41 @@ loop:
 
 			if file == nil {
 				if currentFile.fileName == "" {
-					panic("Received data before the file name.")
+					log.Fatal("Received data before the file name.")
 				}
 
 				err := os.MkdirAll(path.Dir(currentFile.fileName), 0777)
 				if err != nil {
-					panic(err)
+					log.Fatal(err)
 				}
 
 				file, err = os.Create(currentFile.fileName)
 				if err != nil {
-					panic(err)
+					log.Fatal(err)
 				}
 
 				err = file.Chmod(0777)
 				if err != nil {
-					panic(err)
+					log.Fatal(err)
 				}
 
 				for idx, col := range currentFile.columns {
 					if idx > 0 {
 						_, err = file.WriteString(",")
 						if err != nil {
-							panic(err)
+							log.Fatal(err)
 						}
 					}
 
 					_, err = file.WriteString(col)
 					if err != nil {
-						panic(err)
+						log.Fatal(err)
 					}
 				}
 
 				_, err = file.WriteString("\n")
 				if err != nil {
-					panic(err)
+					log.Fatal(err)
 				}
 			}
 
@@ -116,7 +121,7 @@ loop:
 				if idx > 0 {
 					_, err := file.WriteString(",")
 					if err != nil {
-						panic(err)
+						log.Fatal(err)
 					}
 				}
 
@@ -125,33 +130,33 @@ loop:
 
 					_, err := file.WriteString(el)
 					if err != nil {
-						panic(err)
+						log.Fatal(err)
 					}
 
 				case int, int8, int32, int64:
 
 					_, err := file.WriteString(strconv.FormatInt(el.(int64), 10))
 					if err != nil {
-						panic(err)
+						log.Fatal(err)
 					}
 
 				case time.Time:
 
 					_, err := file.WriteString(strconv.FormatInt(el.Unix(), 10))
 					if err != nil {
-						panic(err)
+						log.Fatal(err)
 					}
 
 				default:
 
-					panic("Unknown column data type.")
+					log.Fatal("Unknown column data type.")
 
 				}
 			}
 
 			_, err := file.WriteString("\n")
 			if err != nil {
-				panic(err)
+				log.Fatal(err)
 			}
 
 		case f := <-nextFile:
@@ -159,12 +164,12 @@ loop:
 			if file != nil {
 				err := file.Sync()
 				if err != nil {
-					panic(err)
+					log.Fatal(err)
 				}
 
 				err = file.Close()
 				if err != nil {
-					panic(err)
+					log.Fatal(err)
 				}
 
 				file = nil
@@ -177,12 +182,12 @@ loop:
 			if file != nil {
 				err := file.Sync()
 				if err != nil {
-					panic(err)
+					log.Fatal(err)
 				}
 
 				err = file.Close()
 				if err != nil {
-					panic(err)
+					log.Fatal(err)
 				}
 
 				file = nil
@@ -204,7 +209,7 @@ loop:
 
 			rows, err := DB.Database.Queryx(q.stmt)
 			if err != nil {
-				panic(err)
+				log.Fatal(err)
 			}
 
 			nextFile := make(chan fileInfo)
@@ -225,7 +230,7 @@ loop:
 					if rowI == 0 {
 						columns, err := rows.Columns()
 						if err != nil {
-							panic(err)
+							log.Fatal(err)
 						}
 
 						fileName := fmt.Sprintf("%s/%s/%03d.csv", q.outputDirPath, q.tableName, fileI)
@@ -235,7 +240,7 @@ loop:
 
 					row, err := rows.SliceScan()
 					if err != nil {
-						panic(err)
+						log.Fatal(err)
 					}
 
 					rowsToDump <- row
