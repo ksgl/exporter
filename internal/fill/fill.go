@@ -50,7 +50,7 @@ func Populate(DB *database.DB) {
 
 	var date string
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 4000; i++ {
 		// february
 		if month := strconv.Itoa(rand.Intn(11) + 1); month == "2" {
 			date = strconv.Itoa(rand.Intn(119)+1900) + "-" + month + "-" + strconv.Itoa(rand.Intn(27)+1)

@@ -147,9 +147,16 @@ loop:
 						log.Fatal(err)
 					}
 
-				default:
+				case bool:
 
-					log.Fatal("Unknown column data type.")
+					_, err := file.WriteString(strconv.FormatBool(el))
+					if err != nil {
+						log.Fatal(err)
+					}
+
+				default:
+					log.Println(reflect.Type(el))
+					log.Fatal("Unknown column data type: ", el)
 
 				}
 			}

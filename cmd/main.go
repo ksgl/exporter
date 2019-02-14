@@ -3,7 +3,6 @@ package main
 import (
 	"exporter/internal/config"
 	"exporter/internal/database"
-	"exporter/internal/fill"
 	"flag"
 )
 
@@ -17,7 +16,7 @@ func main() {
 	conf := config.ReadConfiguration(*confFile)
 
 	db := database.Connect(*conf)
-	fill.Populate(db)
+	//fill.Populate(db)
 	db.ExportCSV(*conf, *threads)
 
 	return

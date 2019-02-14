@@ -1,16 +1,11 @@
 {
-    "conn": "user=ksu password='pswd' dbname='some_db' sslmode=disable",
+    "conn": "user=ksu password='pswd' dbname='parkdb' sslmode=disable",
     "output_dir": "./result",
     "tables": [
       {
-        "name": "people",
-        "query": "select name, lastname, birthday from people",
-        "max_lines": 2
-      },
-      {
-        "name": "cities",
-        "query": "select name, country_id from cities",
-        "max_lines": 5
+        "name": "posts",
+        "query": "select forum_slug from posts",
+        "max_lines": 10000
       }
     ]
 }
