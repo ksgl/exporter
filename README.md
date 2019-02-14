@@ -1,10 +1,9 @@
 # Сборка и тестирование
 ```
-docker build -t exporter .
-docker run --name exporter -t exporter
-docker run -it exporter /bin/bash
+go build cmd/main.go
+./main
 ```
-В директории будет папка с файлами. В докере запускается в 1 поток и с конфигом conf.json. Для изменения есть параметры:
+По дефолту запускается в 1 поток и с конфигом conf.json. Для изменения есть параметры:
 
 Параметр                              | Описание
 ---                                   | ---
@@ -13,7 +12,8 @@ docker run -it exporter /bin/bash
 
 Пример:
 ```
-go run cmd/main.go -threads=8 -config=custom_conf.json
+go build cmd/main.go
+./main -threads=8 -config=custom_conf.json
 ```
 
 # Задание
