@@ -154,6 +154,24 @@ loop:
 						log.Fatal(err)
 					}
 
+				case []uint8:
+
+					b := make([]byte, len(el))
+					for i, v := range el {
+						b[i] = byte(v)
+					}
+
+					_, err := file.WriteString(string(b))
+					if err != nil {
+						log.Fatal(err)
+					}
+
+				case nil:
+					_, err := file.WriteString("NULL")
+					if err != nil {
+						log.Fatal(err)
+					}
+
 				default:
 					log.Fatal("Unknown column data type: ", el)
 

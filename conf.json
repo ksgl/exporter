@@ -4,7 +4,7 @@
     "tables": [
       {
         "name": "posts",
-        "query": "select forum_slug from posts",
+        "query": "select * from posts",
         "max_lines": 10000
       }
     ]
