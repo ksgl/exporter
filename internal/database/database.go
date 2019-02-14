@@ -155,7 +155,6 @@ loop:
 					}
 
 				default:
-					log.Println(reflect.Type(el))
 					log.Fatal("Unknown column data type: ", el)
 
 				}
