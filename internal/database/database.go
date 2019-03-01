@@ -42,13 +42,9 @@ func Connect(conf config.Configuration) *DB {
 func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 	queriesToExecute := make(chan queryParams)
 	noMoreQueries := make(chan bool)
-	var dones []chan bool
 
 	for i := 0; i < threads; i++ {
-		done := make(chan bool)
-		dones = append(dones, done)
-
-		go DB.executeQueries(queriesToExecute, noMoreQueries, done)
+		go DB.executeQueries(queriesToExecute, noMoreQueries)
 	}
 
 	for _, tbl := range conf.Tables {
@@ -59,12 +55,8 @@ func (DB *DB) ExportCSV(conf config.Configuration, threads int) {
 			outputDirPath: conf.OutputDir}
 	}
 
-	for range dones {
+	for i := 0; i < threads; i++ {
 		noMoreQueries <- true
-	}
-
-	for _, done := range dones {
-		<-done
 	}
 }
 
@@ -225,7 +217,7 @@ loop:
 	doneDumping <- true
 }
 
-func (DB *DB) executeQueries(queriesToExecute chan queryParams, noMoreQueries chan bool, done chan bool) {
+func (DB *DB) executeQueries(queriesToExecute chan queryParams, noMoreQueries chan bool) {
 loop:
 	for true {
 		select {
@@ -282,6 +274,4 @@ loop:
 
 		}
 	}
-
-	done <- true
 }
